@@ -15,7 +15,7 @@ driver = webdriver.Chrome()
 # 连接数据库
 db_conn = conn.MySQLCommand()
 # 爬取文件开始日期
-CURRENT_DATE = "20180105"
+CURRENT_DATE = "20180122"
 # 爬取文件结束日期
 END_DATE = "20181231"
 # 基础url
@@ -36,7 +36,7 @@ def saveURL(current_date):
         item = driver.find_elements_by_xpath('//li/a')
         for i in item:
             db_url = {"qa_time": str(current_date.strftime('%Y%m%d')), "qa_status": '0',
-                      "qa_url": i.get_attribute('href'), "qa_title": i.text.replace("\"", "\'")}
+                      "qa_url": i.get_attribute('href'), "qa_title": i.text.replace("\"", "\'").replace("\\", "_")}
             # 将数据保存到数据库
             db_conn.insertData(db_url, primary_key="qa_url")
 
@@ -64,3 +64,4 @@ def main():
 if __name__ == '__main__':
     main()
     driver.close()
+    db_conn.closeMysql()

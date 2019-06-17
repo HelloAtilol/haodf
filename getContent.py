@@ -12,21 +12,47 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 
 # 连接数据库
-select_conn = conn.MySQLCommand()
-select_conn.connectMysql(table="all_url")
-update_conn = conn.MySQLCommand()
+# select_conn = conn.MySQLCommand()
+# select_conn.connectMysql(table="all_url")
+# update_conn = conn.MySQLCommand()
 
 driver = webdriver.Chrome()
 
 
-def split_content(url):
+def split_relative(qa_number, relative_soups):
+    """
+    负责解析相关问答、文章和疾病
+    :param qa_number: 访问页面对应的编号
+    :param relative_soups: 需要解析的Beautifulsoup对象
+    :return:
+    """
+    for relative_soup in relative_soups:
+        # print(relative_soup)
+        r_text = relative_soup.p.find("span", {"class": "fl f18"}).text
+        # 相关标签，0代表问答；1代表文章；2代表疾病
+        if "相关回复" in r_text:
+            tag = 0
+        elif "相关文章" in r_text:
+            tag = 1
+        elif "相关疾病" in r_text:
+            tag = 2
+        rq_lis = relative_soup.find_all("li")
+        for rq_li in rq_lis:
+            result = {"rela_tag": tag, "rela_title": rq_li.a.string, "rela_url": rq_li.a["href"][2:], "qa_number": qa_number}
+            # TODO 保存到数据库
+            print(result)
 
+
+def split_content(qa_number, url):
     # 判断是问答是医生还是团队
     if "wenda" in url:
         doctor_patient = url.replace("https://www.haodf.com/wenda/", "").replace(".htm", "")
-        print(doctor_patient.split("_"))
-        doctor, _, patient = doctor_patient.split("_")
-        update_url = {"qa_doctor": doctor, "qa_patient": patient, "qa_type": '0'}
+        _, _, patient = doctor_patient.split("_")
+        update_url = {"qa_patient": patient, "qa_type": '0'}
+    elif "flow_team" in url:
+        doctor_patient = url.replace("https://www.haodf.com/doctorteam/", "").replace(".htm", "")
+        _, _, patient = doctor_patient.split("_")
+        update_url = {"qa_patient": patient, "qa_type": '0'}
     else:
         print("出现新的URL方式，请手动解析！")
 
@@ -34,37 +60,47 @@ def split_content(url):
     driver.get(url)
     soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
 
+    # 更新医生id
+    doctor_id_soup = soup.find("span", {"class": "space_b_url"})
+    update_url["qa_doctor"] = doctor_id_soup.string
     # 更新title
-    title = soup.title.string
-    update_url["qa_title"] = title
+    title_soup = soup.find("h1", {"class": "fl f20 fn fyahei pl20 bdn"})
+    if title_soup is None:
+        title_soup = soup.find("div", {"class": "fl-title ellps"})
+    update_url["qa_title"] = title_soup.string
     # 更改URL的status，0代表未解析，1代表已解析，其他代表异常
     # update_url["qa_status"] = '1'
-    update_conn.connectMysql(table="all_url")
-    update_conn.update_database(datadict=update_url, situation="WHERE qa_url = '%s'" % url)
-    # print(update_url)
+    # update_conn.connectMysql(table="all_url")
+    # update_conn.update_database(datadict=update_url, situation="WHERE qa_url = '%s'" % url)
+    print(update_url)
 
-    # 解析QA
+    # 解析相关问答、文章、疾病 TODO， 放在一个数据库
+    relative_soups = soup.find_all("div", {"class": "mt20 w670 bg_w zzx_t_repeat"})
 
-    # 解析相关问答、文章、疾病
+    split_relative(qa_number = qa_number, relative_soups=relative_soups)
+
+    # 解析QA TODO
 
 
 def main():
     # 从数据库中读取未解析页面的URL
     title_list = ["qa_url"]
     situation = "WHERE qa_status = '0'"
-    select_cursor = select_conn.select_order(title_list=title_list, situation=situation)
+    # select_cursor = select_conn.select_order(title_list=title_list, situation=situation)
     while True:
-        result = select_cursor.fetchone()
-        if result is None:
-            break
-        # temp_url = https://www.haodf.com/wenda/abc195366_g_5673322365.htm
-        temp_url = result[0]
+        # result = select_cursor.fetchone()
+        # if result is None:
+        #     break
+        temp_url = 'https://www.haodf.com/wenda/abc195366_g_5673322365.htm'
+        # temp_url = 'https://www.haodf.com/doctorteam/flow_team_6465190653.htm'
+        # temp_url = result[0]
         print(temp_url)
-        split_content(temp_url)
+        # TODO 这里尽量传递一个url对应的编号，建立外键
+        split_content('1', temp_url)
         break
 
 
 if __name__ == '__main__':
     main()
     driver.close()
-    select_conn.closeMysql()
+    # select_conn.closeMysql()

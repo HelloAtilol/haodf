@@ -14,15 +14,38 @@ from selenium import webdriver
 # 连接数据库
 select_conn = conn.MySQLCommand()
 select_conn.connectMysql(table="all_url")
+update_conn = conn.MySQLCommand()
 
 driver = webdriver.Chrome()
 
 
 def split_content(url):
+
+    # 判断是问答是医生还是团队
+    if "wenda" in url:
+        doctor_patient = url.replace("https://www.haodf.com/wenda/", "").replace(".htm", "")
+        print(doctor_patient.split("_"))
+        doctor, _, patient = doctor_patient.split("_")
+        update_url = {"qa_doctor": doctor, "qa_patient": patient, "qa_type": '0'}
+    else:
+        print("出现新的URL方式，请手动解析！")
+
+    # 将页面变为Beautisoup对象
     driver.get(url)
     soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
-    result = soup.title.string
-    print(result)
+
+    # 更新title
+    title = soup.title.string
+    update_url["qa_title"] = title
+    # 更改URL的status，0代表未解析，1代表已解析，其他代表异常
+    # update_url["qa_status"] = '1'
+    update_conn.connectMysql(table="all_url")
+    update_conn.update_database(datadict=update_url, situation="WHERE qa_url = '%s'" % url)
+    # print(update_url)
+
+    # 解析QA
+
+    # 解析相关问答、文章、疾病
 
 
 def main():
@@ -34,6 +57,7 @@ def main():
         result = select_cursor.fetchone()
         if result is None:
             break
+        # temp_url = https://www.haodf.com/wenda/abc195366_g_5673322365.htm
         temp_url = result[0]
         print(temp_url)
         split_content(temp_url)

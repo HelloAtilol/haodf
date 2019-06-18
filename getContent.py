@@ -38,7 +38,8 @@ def split_relative(qa_number, relative_soups):
             tag = 2
         rq_lis = relative_soup.find_all("li")
         for rq_li in rq_lis:
-            result = {"rela_tag": tag, "rela_title": rq_li.a.string, "rela_url": rq_li.a["href"][2:], "qa_number": qa_number}
+            result = {"rela_tag": tag, "rela_title": rq_li.a.string, "rela_url": rq_li.a["href"][2:],
+                      "qa_number": qa_number}
             # TODO 保存到数据库
             print(result)
 
@@ -77,9 +78,14 @@ def split_content(qa_number, url):
     # 解析相关问答、文章、疾病 TODO， 放在一个数据库
     relative_soups = soup.find_all("div", {"class": "mt20 w670 bg_w zzx_t_repeat"})
 
-    split_relative(qa_number = qa_number, relative_soups=relative_soups)
+    split_relative(qa_number=qa_number, relative_soups=relative_soups)
 
     # 解析QA TODO
+    qa_content_soup = soup.find("div", {"class": "stream_left_content fl"})
+    # 获取页数，如果有
+    # page_soup = soup.find("a", {'class': 'page_turn_a', 'rel': 'true'})
+    # page_num = page_soup.text.split("\xa0")[1]
+    # print(page_num)
 
 
 def main():
@@ -91,8 +97,15 @@ def main():
         # result = select_cursor.fetchone()
         # if result is None:
         #     break
-        temp_url = 'https://www.haodf.com/wenda/abc195366_g_5673322365.htm'
+        # 语音
+        # temp_url = 'https://www.haodf.com/wenda/kongweimin_g_5974272953.htm'
+        # 医生
+        # temp_url = 'https://www.haodf.com/wenda/abc195366_g_5673322365.htm'
+        # 团队
         # temp_url = 'https://www.haodf.com/doctorteam/flow_team_6465190653.htm'
+        # 分页 且 无相关
+        temp_url = 'https://www.haodf.com/wenda/fingerprints_g_6403406888.htm'
+
         # temp_url = result[0]
         print(temp_url)
         # TODO 这里尽量传递一个url对应的编号，建立外键

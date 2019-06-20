@@ -82,6 +82,7 @@ def split_content(qa_number, url):
 
     # 解析QA TODO
     qa_content_soup = soup.find("div", {"class": "stream_left_content fl"})
+    print(qa_content_soup)
     # 获取页数，如果有
     # page_soup = soup.find("a", {'class': 'page_turn_a', 'rel': 'true'})
     # page_num = page_soup.text.split("\xa0")[1]

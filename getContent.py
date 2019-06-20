@@ -131,6 +131,7 @@ def split_soups_1(qa_number, qa_list, qa_soups):
             # 患者提问的解析办法
             qa_author = '0'
             result["qa_author"] = qa_author
+            content = ""
             # 使用最多的结构
             content_soup = qa_soup.find("pre", {"class": "h_s_cons_main"})
             # 开药方请求
@@ -164,7 +165,6 @@ def split_soups_1(qa_number, qa_list, qa_soups):
                 content_soup = qa_soup.find("h3", {"class": "h_s_cons_title"})
                 if content_soup is not None:
                     result["qa_tag"] = content_soup.text
-                    content = ""
                     for p_soup in qa_soup.find("div", {"class": "h_s_cons"}).children:
                         if p_soup.name != "p":
                             continue

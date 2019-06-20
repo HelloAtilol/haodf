@@ -9,13 +9,13 @@
 from tools import ConnectDatabase as conn
 from selenium import webdriver
 import datetime
-import requests
+import pyprind
 
 driver = webdriver.Chrome()
 # 连接数据库
 db_conn = conn.MySQLCommand()
 # 爬取文件开始日期
-CURRENT_DATE = "20180122"
+CURRENT_DATE = "20180714"
 # 爬取文件结束日期
 END_DATE = "20181231"
 # 基础url
@@ -34,14 +34,19 @@ def saveURL(current_date):
 
         # 找到所有的标签
         item = driver.find_elements_by_xpath('//li/a')
+        bar = pyprind.ProgBar(len(item))
         for i in item:
-            db_url = {"qa_time": str(current_date.strftime('%Y%m%d')), "qa_status": '0',
+            db_url = {"qa_date": str(current_date.strftime('%Y%m%d')), "qa_status": '0',
                       "qa_url": i.get_attribute('href'), "qa_title": i.text.replace("\"", "\'").replace("\\", "_")}
             # 将数据保存到数据库
             db_conn.insertData(db_url, primary_key="qa_url")
+            bar.update()
 
         # 翻页
-        page_ele = driver.find_elements_by_class_name("p_num")[-1].text
+        try:
+            page_ele = driver.find_elements_by_class_name("p_num")[-1].text
+        except IndexError:
+            break
         # print(page_ele)
         current_page += 1
 

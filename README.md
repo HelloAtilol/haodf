@@ -11,7 +11,7 @@
 
 ## 数据存储方式
 包括四个表：all_url, QA, doctor, relative_qa。具体结构如图所示；
-![haodf](C:\Users\11366\Desktop\haodf.jpg)
+![haodf](https://github.com/HelloAtilol/haodf/blob/master/source/haodf.jpg)
 
 ## 代码执行步骤
 1. 配置`ConnectDatabase.py`中的数据库参数，与数据库建立链接；

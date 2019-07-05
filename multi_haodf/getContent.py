@@ -11,13 +11,13 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 import time
 import random
+import threading
 
 # 连接数据库
-select_conn = conn.MySQLCommand()
-select_conn.connectMysql(table="all_url")
 update_conn = conn.MySQLCommand()
 
-driver = webdriver.Chrome()
+# 创建一个多线程互斥锁，保证数据库不会出现混乱
+lock = threading.Lock()
 
 
 def split_relative(qa_number, relative_soups):
@@ -27,9 +27,6 @@ def split_relative(qa_number, relative_soups):
     :param relative_soups: 需要解析的Beautifulsoup对象
     :return: None
     """
-    # 更换数据存储的表名
-    update_conn.connectMysql(table="relative_url")
-
     for relative_soup in relative_soups:
         # print(relative_soup)
         r_text = relative_soup.p.find("span", {"class": "fl f18"}).text
@@ -44,7 +41,11 @@ def split_relative(qa_number, relative_soups):
         for rq_li in rq_lis:
             result = {"rela_tag": tag, "rela_title": rq_li.a.string, "rela_url": rq_li.a["href"][2:],
                       "qa_number": qa_number}
+            lock.acquire()
+            # 更换数据存储的表名
+            update_conn.connectMysql(table="relative_url")
             update_conn.insertData(data_dict=result, primary_key="rela_url")
+            lock.release()
 
 
 def split_content_1(qa_number, qa_list, qa_soups):
@@ -55,11 +56,21 @@ def split_content_1(qa_number, qa_list, qa_soups):
     :param qa_soups: 问答的Beautifulsoup对象
     :return: qa_list 在一个问答中发言的编号
     """
-    # 更换数据存储的表名
-    update_conn.connectMysql(table="QA")
 
     # 取出第一个提问
     first_describe = qa_soups[0]
+
+    is_describe = first_describe.find("div", {"class": "h_s_cons_info_top"})
+
+    if is_describe is None:
+        # 如果第一条不是病情描述
+        qa_list = split_soups_1(qa_number, qa_list, (first_describe,))
+        try:
+            next_soups = qa_soups[1:]
+            return split_content_1(qa_number, qa_list, next_soups)
+        except IndexError:
+            return qa_list
+
     # 患者状态和咨询时间
     user_soup = first_describe.find("div", {"class": "stream_yh_left"})
     # 状态
@@ -72,6 +83,7 @@ def split_content_1(qa_number, qa_list, qa_soups):
     # 咨询内容
     content = ""
     describe = first_describe.find("div", {"class": "h_s_info_cons"})
+
     for child in describe.children:
         if child.name is None or child.name == "script":
             continue
@@ -80,8 +92,14 @@ def split_content_1(qa_number, qa_list, qa_soups):
         content += (child.text.replace("\n", "") + "\n")
     # 去掉最后一个\n
     first_result["qa_content"] = content[:-1]
+
+    lock.acquire()
+    # 更换数据存储的表名
+    update_conn.connectMysql(table="QA")
     # 表QA无主键，主键为QA编号
     update_conn.insertData(first_result, primary_key="")
+    lock.release()
+
     qa_list += 1
     qa_soups.remove(first_describe)
 
@@ -97,8 +115,6 @@ def split_soups_1(qa_number, qa_list, qa_soups):
     :param qa_soups: 需要解析的soup的list
     :return: qa_list 在一个问答中发言的编号
     """
-    # 更换数据存储的表名
-    update_conn.connectMysql(table="QA")
 
     for qa_soup in qa_soups:
         # 时间
@@ -165,10 +181,12 @@ def split_soups_1(qa_number, qa_list, qa_soups):
                 content_soup = qa_soup.find("h3", {"class": "h_s_cons_title"})
                 if content_soup is not None:
                     result["qa_tag"] = content_soup.text
-                    for p_soup in qa_soup.find("div", {"class": "h_s_cons"}).children:
-                        if p_soup.name != "p":
-                            continue
-                        content += p_soup.text
+                    h_s_cons = qa_soup.find("div", {"class": "h_s_cons"})
+                    if h_s_cons is not None:
+                        for p_soup in h_s_cons.children:
+                            if p_soup.name != "p":
+                                continue
+                            content += p_soup.text
 
             # 以上方式都未检测到，需要添加解析方式
             if content_soup is None:
@@ -182,8 +200,12 @@ def split_soups_1(qa_number, qa_list, qa_soups):
             patient_status = qa_soup.find("div", {"class": "yh_l_states"}).span.string
             result["patient_status"] = patient_status
 
+        lock.acquire()
+        # 更换数据存储的表名
+        update_conn.connectMysql(table="QA")
         # 将数据保存到数据库
         update_conn.insertData(result, primary_key="")
+        lock.release()
         qa_list += 1
 
     # qa_list 在一个问答中发言的编号
@@ -198,8 +220,6 @@ def split_content_2(qa_number, qa_list, qa_soups):
     :param qa_soups: 问答的Beautifulsoup对象
     :return: qa_list 在一个问答中发言的编号
     """
-    # 更换数据存储的表名
-    update_conn.connectMysql(table="QA")
 
     # 取出第一个提问内容
     first_describe = qa_soups[0]
@@ -222,7 +242,13 @@ def split_content_2(qa_number, qa_list, qa_soups):
             content += (child.text+"\n")
     # 去掉最后一个\n
     first_result["qa_content"] = content[:-1]
+
+    lock.acquire()
+    # 更换数据存储的表名
+    update_conn.connectMysql(table="QA")
     update_conn.insertData(first_result, primary_key="")
+    lock.release()
+
     qa_list += 1
 
     # 从list中去掉第一个
@@ -240,9 +266,6 @@ def split_soups_2(qa_number, qa_list, qa_soups):
     :param qa_soups: 需要解析的soup的list
     :return: qa_list 在一个问答中发言的编号
     """
-    # 更换数据存储的表名
-    update_conn.connectMysql(table="QA")
-
     for qa_soup in qa_soups:
         # 时间
         qa_time = qa_soup.find("div", {"class": "f-c-l-date"}).string
@@ -283,8 +306,14 @@ def split_soups_2(qa_number, qa_list, qa_soups):
             # 患者状态
             patient_status = qa_soup.find("div", {"class": "f-c-l-status"}).span.string
             result["patient_status"] = patient_status
+
+        lock.acquire()
+        # 更换数据存储的表名
+        update_conn.connectMysql(table="QA")
         # 将数据保存到数据库
         update_conn.insertData(result, primary_key="")
+        lock.release()
+
         qa_list += 1
     # qa_list 在一个问答中发言的编号
     return qa_list
@@ -314,9 +343,10 @@ def change_split_type(split_type, qa_number, qa_list, qa_soups):
         raise IndexError("没有对应的解析方式。需要查看URL对应的解析方式。")
 
 
-def split_page(qa_number, url):
+def split_page(driver, qa_number, url):
     """
     根据url进行解析
+    :param driver: 浏览器组件
     :param qa_number: url对应的数据库编号
     :param url: url
     :return: None
@@ -325,7 +355,10 @@ def split_page(qa_number, url):
     # 判断是问答是医生还是团队, 0是医生，1是团队
     if "wenda" in url:
         doctor_patient = url.replace("https://www.haodf.com/wenda/", "").replace(".htm", "")
-        _, _, patient = doctor_patient.split("_")
+        try:
+            _, _, patient = doctor_patient.split("_")
+        except ValueError:
+            _, _, _, patient = doctor_patient.split("_")
         update_url = {"qa_patient": patient, "qa_type": '0'}
     elif "flow_team" in url:
         doctor_patient = url.replace("https://www.haodf.com/doctorteam/", "").replace(".htm", "")
@@ -340,26 +373,30 @@ def split_page(qa_number, url):
         soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
     except UnicodeEncodeError:
         # 编码异常
+        lock.acquire()
         update_url["qa_status"] = '3'
         update_conn.connectMysql(table="all_url")
         update_conn.update_database(datadict=update_url, situation="WHERE qa_number = '%s'" % qa_number)
+        lock.release()
         return
 
-    # 更新医生id
-    doctor_id_soup = soup.find("span", {"class": "space_b_url"})
-    update_url["qa_doctor"] = doctor_id_soup.string
-    # 更新title
-    title_soup = soup.find("h1", {"class": "fl f20 fn fyahei pl20 bdn"})
-    if title_soup is None:
-        title_soup = soup.find("div", {"class": "fl-title ellps"})
     # 判断页面是否存在
     try:
+        # 更新医生id
+        doctor_id_soup = soup.find("span", {"class": "space_b_url"})
+        update_url["qa_doctor"] = doctor_id_soup.string
+        # 更新title
+        title_soup = soup.find("h1", {"class": "fl f20 fn fyahei pl20 bdn"})
+        if title_soup is None:
+            title_soup = soup.find("div", {"class": "fl-title ellps"})
         update_url["qa_title"] = title_soup.string
     except AttributeError:
         # 2代表网页异常
+        lock.acquire()
         update_url["qa_status"] = '2'
         update_conn.connectMysql(table="all_url")
         update_conn.update_database(datadict=update_url, situation="WHERE qa_number = '%s'" % qa_number)
+        lock.release()
         return
 
     # 解析相关问答、文章、疾病
@@ -382,73 +419,104 @@ def split_page(qa_number, url):
     if len(qa_content_soups) == 0:
         split_type = 5
         input("未知解析方式！")
+    try:
+        qa_list = change_split_type(split_type, qa_number=qa_number, qa_list=qa_list, qa_soups=qa_content_soups)
+        # 获取页数，如果有,做翻页处理。
+        page_soup = soup.find("a", {'class': 'page_turn_a', 'rel': 'true'})
+        if page_soup is not None:
+            page_num = page_soup.text.split("\xa0")[1]
+            for i in range(1, int(page_num)):
+                driver.get(url.replace(".htm", "_p_%d.htm" % (i + 1)))
+                try:
+                    soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
+                except UnicodeEncodeError:
+                    # 编码异常
+                    lock.acquire()
+                    update_url["qa_status"] = '3'
+                    update_conn.connectMysql(table="all_url")
+                    update_conn.update_database(datadict=update_url, situation="WHERE qa_number = '%s'" % qa_number)
+                    lock.release()
+                    return
+                qa_content_soups = soup.find_all("div", {"class": "zzx_yh_stream"})
+                qa_list = change_split_type(split_type + 1, qa_number=qa_number, qa_list=qa_list,
+                                            qa_soups=qa_content_soups)
+        qa_status = '1'
+    except AttributeError as e:
+        print(e)
+        with open("fail_url.txt", "a", encoding="utf-8") as f:
+            f.write("%d, %s,\t %s \n" % (qa_number, url, e))
+        # 4代表无法全部解析
+        qa_status = '4'
+    except TypeError as e:
+        print(e)
+        with open("fail_url.txt", "a", encoding="utf-8") as f:
+            f.write("%d, %s,\t %s \n" % (qa_number, url, e))
+        qa_status = '4'
+    finally:
+        # 更改URL的status，
+        # 0代表未解析；
+        # 1代表已解析；
+        # 2代表页面异常；
+        # 3代表编码异常；
+        # 4代表解析异常；
+        lock.acquire()
+        update_url["qa_status"] = qa_status
+        update_conn.connectMysql(table="all_url")
+        update_conn.update_database(datadict=update_url, situation="WHERE qa_number = '%s'" % qa_number)
+        lock.release()
 
-    qa_list = change_split_type(split_type, qa_number=qa_number, qa_list=qa_list, qa_soups=qa_content_soups)
 
-    # 获取页数，如果有,做翻页处理。
-    page_soup = soup.find("a", {'class': 'page_turn_a', 'rel': 'true'})
-    if page_soup is not None:
-        page_num = page_soup.text.split("\xa0")[1]
-        for i in range(1, int(page_num)):
-            driver.get(url.replace(".htm", "_p_%d.htm" % (i+1)))
-            soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
-            qa_content_soups = soup.find_all("div", {"class": "zzx_yh_stream"})
-            qa_list = change_split_type(split_type+1, qa_number=qa_number, qa_list=qa_list, qa_soups=qa_content_soups)
+def start(number_urls):
+    """
+    为多线程启动创建的入口
+    :param number_urls: 需要解析的多个(qa_number, url)
+    :return:None
+    """
 
-    # 更改URL的status，0代表未解析，1代表已解析，其他代表异常，并更新到数据库
-    update_url["qa_status"] = '1'
-    update_conn.connectMysql(table="all_url")
-    update_conn.update_database(datadict=update_url, situation="WHERE qa_number = '%s'" % qa_number)
+    driver = webdriver.Chrome()
 
-
-def main():
-    # 从数据库中读取未解析页面的URL
-    title_list = ["qa_number", "qa_url"]
-    situation = "WHERE qa_status = '0'"
-    select_cursor = select_conn.select_order(title_list=title_list, situation=situation)
-    while True:
-        result = select_cursor.fetchone()
-        if result is None:
+    for res in number_urls:
+        if res is None:
             break
-        qa_number, temp_url = result
-        # 测试用的URL
-        # 语音
-        # temp_url = 'https://www.haodf.com/wenda/kongweimin_g_5974272953.htm'
-        # 医生
-        # temp_url = 'https://www.haodf.com/wenda/abc195366_g_5673322365.htm'
-        # 团队， 第二种解析方式
-        # temp_url = 'https://www.haodf.com/doctorteam/flow_team_6465190653.htm'
-        # 分页 且 无相关ss,第一种解析方式
-        # temp_url = 'https://www.haodf.com/wenda/fingerprints_g_6403406888.htm'
-        # 送礼物
-        # temp_url = "https://www.haodf.com/wenda/blueesky_g_5673307901.htm"
+        qa_number, temp_url = res
+
+        # 输出提示信息
+        print("---------------------------------------" * 3)
+        print("\t第%s个URL正在解析.URL：%s" % (str(qa_number), temp_url))
 
         # 如果之前爬取过该页面，删除相关信息
+        lock.acquire()
         delete_situation = "WHERE qa_number = '%s'" % (str(qa_number))
         update_conn.connectMysql(table="QA")
         update_conn.delete_data(situation=delete_situation)
         update_conn.connectMysql(table="relative_url")
         update_conn.delete_data(situation=delete_situation)
+        lock.release()
 
-        if qa_number % 100 == 0:
-            print("休息30s")
-            time.sleep(10)
+        # if qa_number % 100 == 0:
+        #     print("休息30s")
+        #     time.sleep(10)
 
-        print("---------------------------------------" * 3)
-        print("\t第%s个URL正在解析.URL：%s" % (str(qa_number), temp_url))
-        try:
-            split_page(str(qa_number), temp_url)
-        except AttributeError:
-            continue
-        except TypeError:
-            continue
-        print("---------------------------------------" * 3)
+        split_page(driver, str(qa_number), temp_url)
+        # print("---------------------------------------" * 3)
         # 设置睡眠时间，不然会出现被跳转的情况，目前无法try到那个异常
-        time.sleep(random.randint(1, 3))
+        time.sleep(1)
+    driver.close()
 
 
 if __name__ == '__main__':
-    main()
-    driver.close()
-    select_conn.closeMysql()
+
+    # 测试用的URL
+    # 语音
+    # temp_urls = 'https://www.haodf.com/wenda/kongweimin_g_5974272953.htm'
+    # 医生
+    # temp_urls = 'https://www.haodf.com/wenda/abc195366_g_5673322365.htm'
+    # 团队， 第二种解析方式
+    # temp_urls = 'https://www.haodf.com/doctorteam/flow_team_6465190653.htm'
+    # 分页 且 无相关ss,第一种解析方式
+    # temp_urls = 'https://www.haodf.com/wenda/fingerprints_g_6403406888.htm'
+    # 送礼物
+    temp_urls = "https://www.haodf.com/wenda/zhangyaoguo_g_5674421921.htm"
+    start(((3681, temp_urls),))
     update_conn.closeMysql()
+

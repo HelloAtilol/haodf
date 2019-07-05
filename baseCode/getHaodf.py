@@ -15,7 +15,7 @@ driver = webdriver.Chrome()
 # 连接数据库
 db_conn = conn.MySQLCommand()
 # 爬取文件开始日期
-CURRENT_DATE = "20180714"
+CURRENT_DATE = "20181112"
 # 爬取文件结束日期
 END_DATE = "20181231"
 # 基础url

@@ -24,6 +24,9 @@ class MySQLCommand(object):
         self.password = 'sim509'
         # 数据库名
         self.db = 'haodf'
+        self.conn = pymysql.connect(host=self.host, port=self.port, user=self.user,
+                                    passwd=self.password, db=self.db, charset='utf8')
+        self.cursor = self.conn.cursor()
 
     def connectMysql(self, table='topic'):
         """
@@ -32,15 +35,12 @@ class MySQLCommand(object):
         """
         try:
             self.table = table
-            self.conn = pymysql.connect(host=self.host, port=self.port, user=self.user,
-                                        passwd=self.password, db=self.db, charset='utf8')
-            self.cursor = self.conn.cursor()
-            print(self.table, "表已连接！")
+            # print(self.table, "表已连接！")
         except pymysql.Error as e:
             print('连接数据库失败！')
             print(e)
 
-    def insertData(self, data_dict, primary_key='msgId'):
+    def insertData(self, data_dict, primary_key=''):
         """
         将数据插入数据库，首先检查数据是否已经存在，如果存在则不插入
         :param data_dict: 要插入的数据字典
@@ -49,7 +49,8 @@ class MySQLCommand(object):
         """
         # 检测数据是否存在
         if primary_key is not "":
-            sqlExit = "SELECT %s FROM %s WHERE %s = '%s' " % (primary_key, self.table, primary_key, data_dict[primary_key])
+            sqlExit = "SELECT %s FROM %s WHERE %s = '%s' "\
+                      % (primary_key, self.table, primary_key, data_dict[primary_key])
             # 执行查找语句
             # print(sqlExit)
             res = self.cursor.execute(sqlExit)
@@ -61,7 +62,7 @@ class MySQLCommand(object):
             # 拼接属性名
             cols = ','.join(data_dict.keys())
             # 拼接属性名对应的值
-            values = '","'.join(data_dict.values())
+            values = '","'.join([str(x).replace("\"", "_").replace("\'", "_") for x in data_dict.values()])
             # 插入语句
             sql = "INSERT INTO %s (%s) VALUES (%s)" % (self.table, cols, '"' + values + '"')
             # print(sql)
@@ -117,9 +118,21 @@ class MySQLCommand(object):
     def update_database(self, datadict, situation):
         part_sql = ""
         for key, value in datadict.items():
-            part_sql = part_sql + "%s = %s," % (key.replace(" ", "_"), str(value))
+            part_sql = part_sql + "%s = '%s'," % (key.replace(" ", "_").replace("\"", "_").replace("\'", "_"),
+                                                  str(value).replace(" ", "_").replace("\"", "_").replace("\'", "_"))
         sql = "UPDATE %s SET %s %s" % (self.table, part_sql[0: -1], situation)
         # print(sql)
+        res = self.cursor.execute(sql)
+        self.conn.commit()
+        return res
+
+    def delete_data(self, situation):
+        """
+        删除记录
+        :param situation:
+        :return:
+        """
+        sql = "DELETE FROM %s %s" % (self.table, situation)
         res = self.cursor.execute(sql)
         self.conn.commit()
         return res
@@ -131,7 +144,7 @@ class MySQLCommand(object):
         """
         self.cursor.close()
         self.conn.close()
-        print(self.table, '数据库连接已关闭！')
+        print('数据库连接已关闭！')
 
 
 def main():

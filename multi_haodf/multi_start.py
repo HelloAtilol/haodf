@@ -45,8 +45,7 @@ def main():
         # 使主线程等待所有子线程执行完成
         for t in th_list:
             t.join()
-
-        break
+            
     # 关闭数据库连接
     select_conn.closeMysql()
 

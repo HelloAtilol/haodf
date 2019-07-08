@@ -370,7 +370,7 @@ def split_page(driver, qa_number, url):
     # 将页面变为Beautisoup对象
     driver.get(url)
     try:
-        soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
+        soup = BeautifulSoup(driver.page_source.encode('gbk', errors="ignore"), "lxml")
     except UnicodeEncodeError:
         # 编码异常
         lock.acquire()
@@ -428,7 +428,7 @@ def split_page(driver, qa_number, url):
             for i in range(1, int(page_num)):
                 driver.get(url.replace(".htm", "_p_%d.htm" % (i + 1)))
                 try:
-                    soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
+                    soup = BeautifulSoup(driver.page_source.encode('gbk', errors="ignore"), "lxml")
                 except UnicodeEncodeError:
                     # 编码异常
                     lock.acquire()

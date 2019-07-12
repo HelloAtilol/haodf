@@ -12,12 +12,16 @@ from selenium import webdriver
 import time
 import random
 import threading
+from tools.Logger import Logger
 
 # 连接数据库
 update_conn = conn.MySQLCommand()
 
 # 创建一个多线程互斥锁，保证数据库不会出现混乱
 lock = threading.Lock()
+
+# 加载LOG日志
+logger = Logger("haodf").getLog()
 
 
 def split_relative(qa_number, relative_soups):
@@ -78,7 +82,7 @@ def split_content_1(qa_number, qa_list, qa_soups):
     # 发表时间
     qa_time = user_soup.find("div", {"class": "yh_l_times"}).string
     # qa_author: 0是患者，1是医生
-    first_result = {"qa_number": qa_number, "qa_list": qa_list, "qa_author": '0', "patient_status": patient_status, "qa_time": qa_time}
+    first_result = {"qa_number": qa_number, "qa_author": '0', "patient_status": patient_status, "qa_time": qa_time}
 
     # 咨询内容
     content = ""
@@ -93,14 +97,8 @@ def split_content_1(qa_number, qa_list, qa_soups):
     # 去掉最后一个\n
     first_result["qa_content"] = content[:-1]
 
-    lock.acquire()
-    # 更换数据存储的表名
-    update_conn.connectMysql(table="QA")
-    # 表QA无主键，主键为QA编号
-    update_conn.insertData(first_result, primary_key="")
-    lock.release()
-
-    qa_list += 1
+    # 将第一条数据加入到对话流
+    qa_list.append(first_result)
     qa_soups.remove(first_describe)
 
     # qa_list 在一个问答中发言的编号
@@ -120,7 +118,7 @@ def split_soups_1(qa_number, qa_list, qa_soups):
         # 时间
         qa_time = qa_soup.find("div", {"class": "yh_l_times"}).string
         # 结果字典初始化
-        result = {"qa_number": qa_number, "qa_list": qa_list, "qa_time": qa_time, "qa_tag": ""}
+        result = {"qa_number": qa_number, "qa_time": qa_time, "qa_tag": ""}
         # 判断是医生发言还是患者发言
         if "yi" in qa_soup.find("div", {"class": "yh_r_t_icon"}).img["src"]:
             # 医生发言对应的处理过程
@@ -200,22 +198,16 @@ def split_soups_1(qa_number, qa_list, qa_soups):
             patient_status = qa_soup.find("div", {"class": "yh_l_states"}).span.string
             result["patient_status"] = patient_status
 
-        lock.acquire()
-        # 更换数据存储的表名
-        update_conn.connectMysql(table="QA")
-        # 将数据保存到数据库
-        update_conn.insertData(result, primary_key="")
-        lock.release()
-        qa_list += 1
+        # 将解析出来的结果加入对话流
+        qa_list.append(result)
 
-    # qa_list 在一个问答中发言的编号
     return qa_list
 
 
 def split_content_2(qa_number, qa_list, qa_soups):
     """
     解析第二种内容的第一条，class=“f-card clearfix js-f-card”
-    :param qa_list:  问答的标签
+    :param qa_list: 对话流
     :param qa_number: url编号
     :param qa_soups: 问答的Beautifulsoup对象
     :return: qa_list 在一个问答中发言的编号
@@ -231,7 +223,7 @@ def split_content_2(qa_number, qa_list, qa_soups):
     # 发表时间
     qa_time = user_soup.find("div", {"class": "f-c-l-date"}).string
     # qa_author: 0是患者，1是医生
-    first_result = {"qa_number": qa_number, "qa_list": qa_list, "qa_author": '0',
+    first_result = {"qa_number": qa_number, "qa_author": '0',
                     "patient_status": patient_status, "qa_time": qa_time}
 
     # 咨询内容
@@ -249,7 +241,8 @@ def split_content_2(qa_number, qa_list, qa_soups):
     update_conn.insertData(first_result, primary_key="")
     lock.release()
 
-    qa_list += 1
+    # 加入对话流
+    qa_list.append(first_result)
 
     # 从list中去掉第一个
     qa_soups.remove(first_describe)
@@ -270,7 +263,7 @@ def split_soups_2(qa_number, qa_list, qa_soups):
         # 时间
         qa_time = qa_soup.find("div", {"class": "f-c-l-date"}).string
         # 结果字典初始化
-        result = {"qa_number": qa_number, "qa_list": qa_list, "qa_time": qa_time, "qa_tag": ""}
+        result = {"qa_number": qa_number, "qa_time": qa_time, "qa_tag": ""}
         # 判断是医生还是患者
         if "doctor" in qa_soup.find("img", {"class": "f-c-r-usertype"})["src"]:
             # 医生的处理方式
@@ -307,15 +300,11 @@ def split_soups_2(qa_number, qa_list, qa_soups):
             patient_status = qa_soup.find("div", {"class": "f-c-l-status"}).span.string
             result["patient_status"] = patient_status
 
-        lock.acquire()
-        # 更换数据存储的表名
-        update_conn.connectMysql(table="QA")
-        # 将数据保存到数据库
-        update_conn.insertData(result, primary_key="")
-        lock.release()
+        # 解析后加入对话流
+        qa_list.append(result)
 
         qa_list += 1
-    # qa_list 在一个问答中发言的编号
+
     return qa_list
 
 
@@ -324,7 +313,7 @@ def change_split_type(split_type, qa_number, qa_list, qa_soups):
     根据解析类型调用不同的解析方式
     :param split_type: 解析类型
     :param qa_number: url对应的编号
-    :param qa_list: 对话顺序
+    :param qa_list: 对话流
     :param qa_soups: soup的list集合
     :return: qa_list 在一个问答中发言的编号
     """
@@ -369,16 +358,7 @@ def split_page(driver, qa_number, url):
 
     # 将页面变为Beautisoup对象
     driver.get(url)
-    try:
-        soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
-    except UnicodeEncodeError:
-        # 编码异常
-        lock.acquire()
-        update_url["qa_status"] = '3'
-        update_conn.connectMysql(table="all_url")
-        update_conn.update_database(datadict=update_url, situation="WHERE qa_number = '%s'" % qa_number)
-        lock.release()
-        return
+    soup = BeautifulSoup(driver.page_source.encode('gbk', errors='ignore'), "lxml")
 
     # 判断页面是否存在
     try:
@@ -404,7 +384,7 @@ def split_page(driver, qa_number, url):
     split_relative(qa_number=qa_number, relative_soups=relative_soups)
 
     # 解析QA
-    qa_list = 1
+    qa_list = []
     # 默认第一种解析方式{"class": "zzx_yh_stream"}
     split_type = 1
     qa_content_soups = soup.find_all("div", {"class": "zzx_yh_stream"})
@@ -412,9 +392,8 @@ def split_page(driver, qa_number, url):
     # 第二种解析方式{"class": "f-card clearfix js-f-card"}
     if len(qa_content_soups) == 0:
         split_type = 3
-        print("第二种解析方式")
+        # print("第二种解析方式")
         qa_content_soups = soup.find_all("div", {"class": "f-card clearfix js-f-card"})
-
     # 出现了新的网站结构。需要手动解析
     if len(qa_content_soups) == 0:
         split_type = 5
@@ -426,32 +405,31 @@ def split_page(driver, qa_number, url):
         if page_soup is not None:
             page_num = page_soup.text.split("\xa0")[1]
             for i in range(1, int(page_num)):
+                # 对之后的页面解析
                 driver.get(url.replace(".htm", "_p_%d.htm" % (i + 1)))
-                try:
-                    soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
-                except UnicodeEncodeError:
-                    # 编码异常
-                    lock.acquire()
-                    update_url["qa_status"] = '3'
-                    update_conn.connectMysql(table="all_url")
-                    update_conn.update_database(datadict=update_url, situation="WHERE qa_number = '%s'" % qa_number)
-                    lock.release()
-                    return
+                soup = BeautifulSoup(driver.page_source.encode('gbk'), "lxml")
                 qa_content_soups = soup.find_all("div", {"class": "zzx_yh_stream"})
                 qa_list = change_split_type(split_type + 1, qa_number=qa_number, qa_list=qa_list,
                                             qa_soups=qa_content_soups)
+        lock.acquire()
+        tag = 1
+        for ql in qa_list:
+            # 将数据保存到数据库
+            ql["qa_list"] = tag
+            update_conn.connectMysql(table="QA")
+            update_conn.insertData(ql, primary_key="")
+            tag += 1
+        lock.release()
         qa_status = '1'
     except AttributeError as e:
-        print(e)
-        with open("fail_url.txt", "a", encoding="utf-8") as f:
-            f.write("%d, %s,\t %s \n" % (qa_number, url, e))
-        # 4代表无法全部解析
+        logger.error("%d, %s,\t %s \n" % (qa_number, url, e))
         qa_status = '4'
     except TypeError as e:
-        print(e)
-        with open("fail_url.txt", "a", encoding="utf-8") as f:
-            f.write("%d, %s,\t %s \n" % (qa_number, url, e))
+        logger.error("%d, %s,\t %s \n" % (qa_number, url, e))
         qa_status = '4'
+    except Exception as e:
+        logger.error("%d, %s,\t %s \n" % (qa_number, url, e))
+        qa_status = '5'
     finally:
         # 更改URL的status，
         # 0代表未解析；
@@ -459,6 +437,7 @@ def split_page(driver, qa_number, url):
         # 2代表页面异常；
         # 3代表编码异常；
         # 4代表解析异常；
+        # 5代表其他异常
         lock.acquire()
         update_url["qa_status"] = qa_status
         update_conn.connectMysql(table="all_url")
@@ -472,8 +451,9 @@ def start(number_urls):
     :param number_urls: 需要解析的多个(qa_number, url)
     :return:None
     """
-
-    driver = webdriver.Chrome()
+    option = webdriver.ChromeOptions()
+    option.add_argument('headless')
+    driver = webdriver.Chrome(options=option)
 
     for res in number_urls:
         if res is None:
@@ -481,8 +461,8 @@ def start(number_urls):
         qa_number, temp_url = res
 
         # 输出提示信息
-        print("---------------------------------------" * 3)
-        print("\t第%s个URL正在解析.URL：%s" % (str(qa_number), temp_url))
+        # print("---------------------------------------" * 3)
+        # print("\t第%s个URL正在解析.URL：%s" % (str(qa_number), temp_url))
 
         # 如果之前爬取过该页面，删除相关信息
         lock.acquire()
@@ -500,7 +480,8 @@ def start(number_urls):
         split_page(driver, str(qa_number), temp_url)
         # print("---------------------------------------" * 3)
         # 设置睡眠时间，不然会出现被跳转的情况，目前无法try到那个异常
-        time.sleep(1)
+        # time.sleep(1)
+        logger.info(temp_url+"\tcompleted.")
     driver.close()
 
 
@@ -516,7 +497,7 @@ if __name__ == '__main__':
     # 分页 且 无相关ss,第一种解析方式
     # temp_urls = 'https://www.haodf.com/wenda/fingerprints_g_6403406888.htm'
     # 送礼物
-    temp_urls = "https://www.haodf.com/wenda/zhangyaoguo_g_5674421921.htm"
-    start(((3681, temp_urls),))
+    temp_urls = "https://www.haodf.com/wenda/wanghuigk_g_5737507776.htm"
+    start(((148990, temp_urls),))
     update_conn.closeMysql()
 

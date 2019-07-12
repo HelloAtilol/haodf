@@ -25,7 +25,7 @@ def main():
 
     # 查询
     title_list = ["qa_number", "qa_url"]
-    situation = "WHERE qa_status = '0'"
+    situation = "WHERE qa_status = '0' or qa_status ='3'"
     select_cursor = select_conn.select_order(title_list=title_list, situation=situation)
 
     # 定义一个tag控制循环

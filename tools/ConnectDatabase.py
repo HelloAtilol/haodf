@@ -119,7 +119,8 @@ class MySQLCommand(object):
         part_sql = ""
         for key, value in datadict.items():
             part_sql = part_sql + "%s = '%s'," % (key.replace(" ", "_").replace("\"", "_").replace("\'", "_"),
-                                                  str(value).replace(" ", "_").replace("\"", "_").replace("\'", "_"))
+                                                  str(value).replace(" ", "_").replace("\"", "_").replace("\'", "_")
+                                                  .replace("\\", "_"))
         sql = "UPDATE %s SET %s %s" % (self.table, part_sql[0: -1], situation)
         # print(sql)
         res = self.cursor.execute(sql)
